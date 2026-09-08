@@ -1,4 +1,5 @@
 numpy
 nibabel
 matplotlib
+opencv-python
 pytest
