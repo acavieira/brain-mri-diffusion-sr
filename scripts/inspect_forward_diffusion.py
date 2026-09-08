@@ -27,11 +27,10 @@ from mri_diffusion.data import find_t1w_files
 from mri_diffusion.dataset import (
     MRIDiffusionDataset,
     build_sample_index,
+    model_tensor_to_image,
 )
 from mri_diffusion.device import get_device
-from mri_diffusion.scheduler import (
-    DiffusionScheduler,
-)
+from mri_diffusion.scheduler import DiffusionScheduler
 
 
 def main():
@@ -55,11 +54,11 @@ def main():
         noise_sigma=NOISE_SIGMA,
     )
 
-    selected_sample = dataset[
-        len(dataset) // 2
-    ]
+    selected_position = len(dataset) // 2
+    selected_sample = dataset[selected_position]
 
     clean_image = selected_sample["hr"]
+
     clean_images = clean_image.unsqueeze(0).to(
         device
     )
@@ -94,11 +93,18 @@ def main():
         4,
         figsize=(12, 7),
     )
+
     plot_axes = plot_axes.flatten()
 
+    clean_display = model_tensor_to_image(
+        clean_image
+    ).squeeze(0).numpy()
+
     plot_axes[0].imshow(
-        clean_image.squeeze(0).numpy(),
+        clean_display,
         cmap="gray",
+        vmin=0.0,
+        vmax=1.0,
     )
     plot_axes[0].set_title("Clean HR")
     plot_axes[0].axis("off")
@@ -119,18 +125,16 @@ def main():
             timesteps=timestep_tensor,
         )
 
-        noisy_image = (
+        noisy_image = model_tensor_to_image(
             noisy_images[0, 0]
-            .detach()
-            .cpu()
-            .numpy()
-        )
+        ).detach().cpu().numpy()
 
         alpha_bar = scheduler.alpha_bars[
             timestep
         ].item()
 
         signal_coefficient = alpha_bar ** 0.5
+
         noise_coefficient = (
             1.0 - alpha_bar
         ) ** 0.5
@@ -138,12 +142,16 @@ def main():
         plot_axes[plot_position].imshow(
             noisy_image,
             cmap="gray",
+            vmin=0.0,
+            vmax=1.0,
         )
+
         plot_axes[plot_position].set_title(
             f"t = {timestep}\n"
             f"signal = {signal_coefficient:.3f}\n"
             f"noise = {noise_coefficient:.3f}"
         )
+
         plot_axes[plot_position].axis("off")
 
         print(
@@ -159,10 +167,12 @@ def main():
         f"on {device}",
         fontsize=14,
     )
+
     figure.tight_layout(
         rect=(0, 0, 1, 0.93),
         h_pad=4.0,
     )
+
     plt.show()
 
 

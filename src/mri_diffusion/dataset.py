@@ -178,8 +178,8 @@ def prepare_sample(
 
     return prepared_sample
 
-def image_to_tensor(image):
-    """Convert one 2D NumPy image to a channel-first tensor."""
+def image_to_model_tensor(image):
+    """Convert a [0, 1] NumPy image to a [-1, 1] tensor."""
 
     contiguous_image = np.ascontiguousarray(
         image,
@@ -188,9 +188,21 @@ def image_to_tensor(image):
 
     tensor = torch.from_numpy(
         contiguous_image
-    )
+    ).unsqueeze(0)
 
-    return tensor.unsqueeze(0)
+    return tensor * 2.0 - 1.0
+
+
+def model_tensor_to_image(tensor):
+    """Convert a [-1, 1] model tensor back to [0, 1]."""
+
+    image = (tensor + 1.0) / 2.0
+
+    return torch.clamp(
+        image,
+        0.0,
+        1.0,
+    )
 
 
 class MRIDiffusionDataset(Dataset):
@@ -241,13 +253,13 @@ class MRIDiffusionDataset(Dataset):
             split_name = "unassigned"
 
         return {
-            "hr": image_to_tensor(
+            "hr": image_to_model_tensor(
                 prepared["hr"]
             ),
-            "lr": image_to_tensor(
+            "lr": image_to_model_tensor(
                 prepared["lr"]
             ),
-            "condition": image_to_tensor(
+            "condition": image_to_model_tensor(
                 prepared["condition"]
             ),
             "sample_id": prepared["sample_id"],

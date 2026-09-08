@@ -8,6 +8,13 @@ from mri_diffusion.dataset import (
     build_sample_index,
 )
 
+from mri_diffusion.dataset import (
+    MRIDiffusionDataset,
+    build_sample_index,
+    image_to_model_tensor,
+    model_tensor_to_image,
+)
+
 
 def create_test_dataset(tmp_path):
     path = (
@@ -135,3 +142,40 @@ def test_dataloader_adds_batch_dimension(
 
     assert batch["slice_index"].shape == (2,)
     assert len(batch["sample_id"]) == 2
+
+def test_image_to_model_tensor_maps_expected_values():
+    image = np.array(
+        [[0.0, 0.25, 0.5, 1.0]],
+        dtype=np.float32,
+    )
+
+    tensor = image_to_model_tensor(image)
+
+    expected = torch.tensor(
+        [[[-1.0, -0.5, 0.0, 1.0]]],
+        dtype=torch.float32,
+    )
+
+    torch.testing.assert_close(
+        tensor,
+        expected,
+    )
+
+
+def test_model_tensor_to_image_restores_expected_values():
+    tensor = torch.tensor(
+        [[[-1.0, -0.5, 0.0, 1.0]]],
+        dtype=torch.float32,
+    )
+
+    image = model_tensor_to_image(tensor)
+
+    expected = torch.tensor(
+        [[[0.0, 0.25, 0.5, 1.0]]],
+        dtype=torch.float32,
+    )
+
+    torch.testing.assert_close(
+        image,
+        expected,
+    )
