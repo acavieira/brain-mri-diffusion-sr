@@ -2,10 +2,10 @@ import pytest
 import torch
 
 from mri_diffusion.unet import (
+    ResidualBlock,
     SinusoidalTimeEmbedding,
     TimeEmbedding,
 )
-
 
 def create_time_embedding():
     return SinusoidalTimeEmbedding(
@@ -184,3 +184,135 @@ def test_trainable_time_embedding_rejects_invalid_hidden_dimension():
             embedding_dim=256,
             hidden_dim=0,
         )
+
+def create_residual_block(
+    input_channels=64,
+    output_channels=64,
+):
+    return ResidualBlock(
+        input_channels=input_channels,
+        output_channels=output_channels,
+        time_embedding_dim=256,
+        group_count=8,
+    )
+
+
+def test_residual_block_preserves_image_shape():
+    residual_block = create_residual_block()
+
+    image_features = torch.randn(
+        (2, 64, 16, 16),
+        dtype=torch.float32,
+    )
+
+    time_embedding = torch.randn(
+        (2, 256),
+        dtype=torch.float32,
+    )
+
+    output = residual_block(
+        image_features,
+        time_embedding,
+    )
+
+    assert output.shape == (
+        2,
+        64,
+        16,
+        16,
+    )
+
+
+def test_residual_block_changes_channel_count():
+    residual_block = create_residual_block(
+        input_channels=64,
+        output_channels=128,
+    )
+
+    image_features = torch.randn(
+        (2, 64, 16, 16),
+        dtype=torch.float32,
+    )
+
+    time_embedding = torch.randn(
+        (2, 256),
+        dtype=torch.float32,
+    )
+
+    output = residual_block(
+        image_features,
+        time_embedding,
+    )
+
+    assert output.shape == (
+        2,
+        128,
+        16,
+        16,
+    )
+
+
+def test_residual_block_uses_time_embedding():
+    torch.manual_seed(23)
+
+    residual_block = create_residual_block()
+
+    image_features = torch.zeros(
+        (1, 64, 8, 8),
+        dtype=torch.float32,
+    )
+
+    first_time = torch.zeros(
+        (1, 256),
+        dtype=torch.float32,
+    )
+
+    second_time = torch.ones(
+        (1, 256),
+        dtype=torch.float32,
+    )
+
+    first_output = residual_block(
+        image_features,
+        first_time,
+    )
+
+    second_output = residual_block(
+        image_features,
+        second_time,
+    )
+
+    assert not torch.allclose(
+        first_output,
+        second_output,
+    )
+
+
+def test_residual_block_receives_gradients():
+    residual_block = create_residual_block()
+
+    image_features = torch.randn(
+        (2, 64, 8, 8),
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+
+    time_embedding = torch.randn(
+        (2, 256),
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+
+    output = residual_block(
+        image_features,
+        time_embedding,
+    )
+
+    loss = output.square().mean()
+    loss.backward()
+
+    assert image_features.grad is not None
+    assert time_embedding.grad is not None
+
+    for parameter in residual_block.parameters():
+        assert parameter.grad is not None
