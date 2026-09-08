@@ -240,3 +240,41 @@ class ResidualBlock(nn.Module):
         output = hidden + residual
 
         return output
+
+class Downsample(nn.Module):
+    """Reduce feature height and width by a factor of two."""
+
+    def __init__(self, channels):
+        super().__init__()
+
+        if channels <= 0:
+            raise ValueError(
+                "Channel count must be positive"
+            )
+
+        self.channels = channels
+
+        self.convolution = nn.Conv2d(
+            in_channels=channels,
+            out_channels=channels,
+            kernel_size=3,
+            stride=2,
+            padding=1,
+        )
+
+    def forward(self, image_features):
+        if image_features.ndim != 4:
+            raise ValueError(
+                "Image features must have shape [B, C, H, W]"
+            )
+
+        if image_features.shape[1] != self.channels:
+            raise ValueError(
+                "Image features have an unexpected channel count"
+            )
+
+        output = self.convolution(
+            image_features
+        )
+
+        return output
