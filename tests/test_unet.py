@@ -3,6 +3,7 @@ import torch
 
 from mri_diffusion.unet import (
     SinusoidalTimeEmbedding,
+    TimeEmbedding,
 )
 
 
@@ -113,4 +114,73 @@ def test_time_embedding_rejects_invalid_inputs():
                 (2, 1),
                 dtype=torch.long,
             )
+        )
+
+def create_trainable_time_embedding():
+    return TimeEmbedding(
+        embedding_dim=256,
+        hidden_dim=512,
+    )
+
+
+def test_trainable_time_embedding_has_expected_shape():
+    time_embedding = (
+        create_trainable_time_embedding()
+    )
+
+    timesteps = torch.tensor(
+        [0, 99, 499, 999],
+        dtype=torch.long,
+    )
+
+    embeddings = time_embedding(
+        timesteps
+    )
+
+    assert embeddings.shape == (4, 256)
+    assert embeddings.dtype == torch.float32
+
+
+def test_trainable_time_embedding_parameter_count():
+    time_embedding = (
+        create_trainable_time_embedding()
+    )
+
+    parameter_count = sum(
+        parameter.numel()
+        for parameter in time_embedding.parameters()
+    )
+
+    assert parameter_count == 262912
+
+
+def test_trainable_time_embedding_receives_gradients():
+    time_embedding = (
+        create_trainable_time_embedding()
+    )
+
+    timesteps = torch.tensor(
+        [10, 500],
+        dtype=torch.long,
+    )
+
+    embeddings = time_embedding(
+        timesteps
+    )
+
+    loss = embeddings.square().mean()
+    loss.backward()
+
+    for parameter in time_embedding.parameters():
+        assert parameter.grad is not None
+
+
+def test_trainable_time_embedding_rejects_invalid_hidden_dimension():
+    with pytest.raises(
+        ValueError,
+        match="positive",
+    ):
+        TimeEmbedding(
+            embedding_dim=256,
+            hidden_dim=0,
         )

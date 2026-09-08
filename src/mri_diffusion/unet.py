@@ -61,3 +61,50 @@ class SinusoidalTimeEmbedding(nn.Module):
         )
 
         return embeddings
+
+
+class TimeEmbedding(nn.Module):
+    """Create a trainable representation of each timestep."""
+
+    def __init__(
+        self,
+        embedding_dim,
+        hidden_dim,
+    ):
+        super().__init__()
+
+        if hidden_dim <= 0:
+            raise ValueError(
+                "Hidden dimension must be positive"
+            )
+
+        self.sinusoidal_embedding = (
+            SinusoidalTimeEmbedding(
+                embedding_dim=embedding_dim
+            )
+        )
+
+        self.projection = nn.Sequential(
+            nn.Linear(
+                embedding_dim,
+                hidden_dim,
+            ),
+            nn.SiLU(),
+            nn.Linear(
+                hidden_dim,
+                embedding_dim,
+            ),
+        )
+
+    def forward(self, timesteps):
+        fixed_embedding = (
+            self.sinusoidal_embedding(
+                timesteps
+            )
+        )
+
+        learned_embedding = self.projection(
+            fixed_embedding
+        )
+
+        return learned_embedding
