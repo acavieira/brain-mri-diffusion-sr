@@ -43,7 +43,7 @@ These are starting values inherited from the previous experiment and can later b
 
 | Parameter | Initial value |
 | --- | --- |
-| Image size | 256 × 256 |
+| Image size | 256 x 256 |
 | Scale | 2 |
 | Gaussian blur sigma | 0.65 |
 | LR noise sigma | 0.02 |
