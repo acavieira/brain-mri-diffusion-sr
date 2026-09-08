@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from mri_diffusion.unet import (
+    ConditionalInputBlock,
     Downsample,
     ResidualBlock,
     SinusoidalTimeEmbedding,
@@ -492,3 +493,119 @@ def test_upsample_rejects_invalid_inputs():
         upsample(
             torch.zeros((2, 32, 8, 8))
         )
+
+def create_conditional_input_block():
+    return ConditionalInputBlock(
+        image_channels=1,
+        condition_channels=1,
+        output_channels=64,
+    )
+
+
+def test_conditional_input_block_has_expected_shape():
+    input_block = (
+        create_conditional_input_block()
+    )
+
+    noisy_images = torch.randn(
+        (2, 1, 16, 16),
+        dtype=torch.float32,
+    )
+
+    conditions = torch.randn(
+        (2, 1, 16, 16),
+        dtype=torch.float32,
+    )
+
+    output = input_block(
+        noisy_images,
+        conditions,
+    )
+
+    assert output.shape == (
+        2,
+        64,
+        16,
+        16,
+    )
+
+
+def test_conditional_input_block_uses_condition():
+    torch.manual_seed(23)
+
+    input_block = (
+        create_conditional_input_block()
+    )
+
+    noisy_images = torch.zeros(
+        (1, 1, 8, 8),
+        dtype=torch.float32,
+    )
+
+    first_condition = torch.zeros(
+        (1, 1, 8, 8),
+        dtype=torch.float32,
+    )
+
+    second_condition = torch.ones(
+        (1, 1, 8, 8),
+        dtype=torch.float32,
+    )
+
+    first_output = input_block(
+        noisy_images,
+        first_condition,
+    )
+
+    second_output = input_block(
+        noisy_images,
+        second_condition,
+    )
+
+    assert not torch.allclose(
+        first_output,
+        second_output,
+    )
+
+
+def test_conditional_input_block_parameter_count():
+    input_block = (
+        create_conditional_input_block()
+    )
+
+    parameter_count = sum(
+        parameter.numel()
+        for parameter in input_block.parameters()
+    )
+
+    assert parameter_count == 1216
+
+
+def test_conditional_input_block_receives_gradients():
+    input_block = (
+        create_conditional_input_block()
+    )
+
+    noisy_images = torch.randn(
+        (2, 1, 8, 8),
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+
+    conditions = torch.randn(
+        (2, 1, 8, 8),
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+
+    output = input_block(
+        noisy_images,
+        conditions,
+    )
+
+    loss = output.square().mean()
+    loss.backward()
+
+    assert noisy_images.grad is not None
+    assert conditions.grad is not None
+    assert input_block.convolution.weight.grad is not None

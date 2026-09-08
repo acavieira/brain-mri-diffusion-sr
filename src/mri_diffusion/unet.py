@@ -324,3 +324,94 @@ class Upsample(nn.Module):
         )
 
         return output
+
+class ConditionalInputBlock(nn.Module):
+    """Join the noisy image and LR condition."""
+
+    def __init__(
+        self,
+        image_channels,
+        condition_channels,
+        output_channels,
+    ):
+        super().__init__()
+
+        if image_channels <= 0:
+            raise ValueError(
+                "Image channel count must be positive"
+            )
+
+        if condition_channels <= 0:
+            raise ValueError(
+                "Condition channel count must be positive"
+            )
+
+        if output_channels <= 0:
+            raise ValueError(
+                "Output channel count must be positive"
+            )
+
+        self.image_channels = image_channels
+        self.condition_channels = condition_channels
+
+        combined_channels = (
+            image_channels + condition_channels
+        )
+
+        self.convolution = nn.Conv2d(
+            in_channels=combined_channels,
+            out_channels=output_channels,
+            kernel_size=3,
+            padding=1,
+        )
+
+    def forward(
+        self,
+        noisy_images,
+        conditions,
+    ):
+        if noisy_images.ndim != 4:
+            raise ValueError(
+                "Noisy images must have shape [B, C, H, W]"
+            )
+
+        if conditions.ndim != 4:
+            raise ValueError(
+                "Conditions must have shape [B, C, H, W]"
+            )
+
+        if noisy_images.shape[0] != conditions.shape[0]:
+            raise ValueError(
+                "Noisy images and conditions "
+                "must have the same batch size"
+            )
+
+        if noisy_images.shape[2:] != conditions.shape[2:]:
+            raise ValueError(
+                "Noisy images and conditions "
+                "must have the same spatial dimensions"
+            )
+
+        if noisy_images.shape[1] != self.image_channels:
+            raise ValueError(
+                "Noisy images have an unexpected channel count"
+            )
+
+        if conditions.shape[1] != self.condition_channels:
+            raise ValueError(
+                "Conditions have an unexpected channel count"
+            )
+
+        combined = torch.cat(
+            (
+                noisy_images,
+                conditions,
+            ),
+            dim=1,
+        )
+
+        output = self.convolution(
+            combined
+        )
+
+        return output
