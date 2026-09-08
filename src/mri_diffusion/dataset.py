@@ -3,6 +3,8 @@
 from pathlib import Path
 
 import numpy as np
+import torch
+from torch.utils.data import Dataset
 
 from mri_diffusion.config import (
     CANONICAL_AXIS_BY_ORIENTATION,
@@ -175,3 +177,86 @@ def prepare_sample(
     prepared_sample["condition"] = condition
 
     return prepared_sample
+
+def image_to_tensor(image):
+    """Convert one 2D NumPy image to a channel-first tensor."""
+
+    contiguous_image = np.ascontiguousarray(
+        image,
+        dtype=np.float32,
+    )
+
+    tensor = torch.from_numpy(
+        contiguous_image
+    )
+
+    return tensor.unsqueeze(0)
+
+
+class MRIDiffusionDataset(Dataset):
+    """Create PyTorch tensors from indexed MRI samples."""
+
+    def __init__(
+        self,
+        samples,
+        target_size,
+        low_percentile,
+        high_percentile,
+        scale,
+        blur_sigma,
+        noise_sigma,
+    ):
+        if not samples:
+            raise ValueError(
+                "The dataset requires at least one sample"
+            )
+
+        self.samples = list(samples)
+        self.target_size = target_size
+        self.low_percentile = low_percentile
+        self.high_percentile = high_percentile
+        self.scale = scale
+        self.blur_sigma = blur_sigma
+        self.noise_sigma = noise_sigma
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, index):
+        sample = self.samples[index]
+
+        prepared = prepare_sample(
+            sample=sample,
+            target_size=self.target_size,
+            low_percentile=self.low_percentile,
+            high_percentile=self.high_percentile,
+            scale=self.scale,
+            blur_sigma=self.blur_sigma,
+            noise_sigma=self.noise_sigma,
+        )
+
+        split_name = prepared["split"]
+
+        if split_name is None:
+            split_name = "unassigned"
+
+        return {
+            "hr": image_to_tensor(
+                prepared["hr"]
+            ),
+            "lr": image_to_tensor(
+                prepared["lr"]
+            ),
+            "condition": image_to_tensor(
+                prepared["condition"]
+            ),
+            "sample_id": prepared["sample_id"],
+            "volume_name": prepared["volume_name"],
+            "subject_id": prepared["subject_id"],
+            "split": split_name,
+            "orientation": prepared["orientation"],
+            "slice_index": prepared["slice_index"],
+            "degradation_seed": prepared[
+                "degradation_seed"
+            ],
+        }

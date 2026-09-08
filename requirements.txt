@@ -2,4 +2,5 @@ numpy
 nibabel
 matplotlib
 opencv-python
+torch
 pytest
