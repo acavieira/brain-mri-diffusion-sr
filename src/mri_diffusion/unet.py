@@ -278,3 +278,49 @@ class Downsample(nn.Module):
         )
 
         return output
+
+class Upsample(nn.Module):
+    """Double feature height and width."""
+
+    def __init__(self, channels):
+        super().__init__()
+
+        if channels <= 0:
+            raise ValueError(
+                "Channel count must be positive"
+            )
+
+        self.channels = channels
+
+        self.resize = nn.Upsample(
+            scale_factor=2,
+            mode="nearest",
+        )
+
+        self.convolution = nn.Conv2d(
+            in_channels=channels,
+            out_channels=channels,
+            kernel_size=3,
+            padding=1,
+        )
+
+    def forward(self, image_features):
+        if image_features.ndim != 4:
+            raise ValueError(
+                "Image features must have shape [B, C, H, W]"
+            )
+
+        if image_features.shape[1] != self.channels:
+            raise ValueError(
+                "Image features have an unexpected channel count"
+            )
+
+        resized_features = self.resize(
+            image_features
+        )
+
+        output = self.convolution(
+            resized_features
+        )
+
+        return output

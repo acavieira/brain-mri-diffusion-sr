@@ -6,6 +6,7 @@ from mri_diffusion.unet import (
     ResidualBlock,
     SinusoidalTimeEmbedding,
     TimeEmbedding,
+    Upsample,
 )
 
 def create_time_embedding():
@@ -403,4 +404,91 @@ def test_downsample_rejects_invalid_inputs():
     ):
         downsample(
             torch.zeros((2, 32, 16, 16))
+        )
+
+def test_upsample_doubles_spatial_dimensions():
+    upsample = Upsample(
+        channels=64
+    )
+
+    image_features = torch.randn(
+        (2, 64, 8, 8),
+        dtype=torch.float32,
+    )
+
+    output = upsample(
+        image_features
+    )
+
+    assert output.shape == (
+        2,
+        64,
+        16,
+        16,
+    )
+
+
+def test_upsample_has_expected_parameter_count():
+    upsample = Upsample(
+        channels=64
+    )
+
+    parameter_count = sum(
+        parameter.numel()
+        for parameter in upsample.parameters()
+    )
+
+    assert parameter_count == 36928
+
+
+def test_upsample_receives_gradients():
+    upsample = Upsample(
+        channels=64
+    )
+
+    image_features = torch.randn(
+        (2, 64, 8, 8),
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+
+    output = upsample(
+        image_features
+    )
+
+    loss = output.square().mean()
+    loss.backward()
+
+    assert image_features.grad is not None
+    assert upsample.convolution.weight.grad is not None
+    assert upsample.convolution.bias.grad is not None
+
+
+def test_upsample_rejects_invalid_inputs():
+    with pytest.raises(
+        ValueError,
+        match="positive",
+    ):
+        Upsample(
+            channels=0
+        )
+
+    upsample = Upsample(
+        channels=64
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"shape \[B, C, H, W\]",
+    ):
+        upsample(
+            torch.zeros((64, 8, 8))
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="channel count",
+    ):
+        upsample(
+            torch.zeros((2, 32, 8, 8))
         )
