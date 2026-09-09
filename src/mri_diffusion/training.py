@@ -40,3 +40,45 @@ def calculate_training_loss(
     )
 
     return loss
+
+def train_one_batch(
+    model,
+    scheduler,
+    optimizer,
+    hr_images,
+    conditions,
+    max_gradient_norm,
+):
+    """Update the model using one batch."""
+
+    if max_gradient_norm <= 0:
+        raise ValueError(
+            "Maximum gradient norm must be positive"
+        )
+
+    model.train()
+
+    optimizer.zero_grad(
+        set_to_none=True
+    )
+
+    loss = calculate_training_loss(
+        model=model,
+        scheduler=scheduler,
+        hr_images=hr_images,
+        conditions=conditions,
+    )
+
+    loss.backward()
+
+    gradient_norm = torch.nn.utils.clip_grad_norm_(
+        model.parameters(),
+        max_norm=max_gradient_norm,
+    )
+
+    optimizer.step()
+
+    return (
+        loss.item(),
+        gradient_norm.item(),
+    )

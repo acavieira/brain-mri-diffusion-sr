@@ -1,10 +1,12 @@
 import torch
+import pytest
 
 from mri_diffusion.scheduler import (
     DiffusionScheduler,
 )
 from mri_diffusion.training import (
     calculate_training_loss,
+    train_one_batch,
 )
 from mri_diffusion.unet import ConditionalUNet
 
@@ -84,3 +86,89 @@ def test_training_loss_reaches_model_parameters():
 
     for parameter in model.parameters():
         assert parameter.grad is not None
+
+def test_train_one_batch_updates_model_parameters():
+    torch.manual_seed(23)
+
+    model = create_small_model()
+    scheduler = create_test_scheduler()
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=0.001,
+        weight_decay=0.0,
+    )
+
+    hr_images = torch.rand(
+        (1, 1, 16, 16),
+        dtype=torch.float32,
+    ) * 2.0 - 1.0
+
+    conditions = torch.rand(
+        (1, 1, 16, 16),
+        dtype=torch.float32,
+    ) * 2.0 - 1.0
+
+    weight_before_training = (
+        model
+        .output_convolution
+        .weight
+        .detach()
+        .clone()
+    )
+
+    loss, gradient_norm = train_one_batch(
+        model=model,
+        scheduler=scheduler,
+        optimizer=optimizer,
+        hr_images=hr_images,
+        conditions=conditions,
+        max_gradient_norm=1.0,
+    )
+
+    weight_after_training = (
+        model
+        .output_convolution
+        .weight
+        .detach()
+    )
+
+    assert loss >= 0.0
+    assert gradient_norm >= 0.0
+
+    assert not torch.equal(
+        weight_before_training,
+        weight_after_training,
+    )
+
+
+def test_train_one_batch_rejects_invalid_gradient_norm():
+    model = create_small_model()
+    scheduler = create_test_scheduler()
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=0.001,
+    )
+
+    hr_images = torch.zeros(
+        (1, 1, 16, 16),
+        dtype=torch.float32,
+    )
+
+    conditions = torch.zeros_like(
+        hr_images
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="positive",
+    ):
+        train_one_batch(
+            model=model,
+            scheduler=scheduler,
+            optimizer=optimizer,
+            hr_images=hr_images,
+            conditions=conditions,
+            max_gradient_norm=0.0,
+        )
