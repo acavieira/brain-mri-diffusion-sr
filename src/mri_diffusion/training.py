@@ -82,3 +82,61 @@ def train_one_batch(
         loss.item(),
         gradient_norm.item(),
     )
+
+def train_one_epoch(
+    model,
+    scheduler,
+    optimizer,
+    data_loader,
+    device,
+    max_gradient_norm,
+):
+    """Train the model once over every batch."""
+
+    total_loss = 0.0
+    total_gradient_norm = 0.0
+    total_samples = 0
+
+    for batch in data_loader:
+        hr_images = batch["hr"].to(
+            device
+        )
+
+        conditions = batch["condition"].to(
+            device
+        )
+
+        batch_size = hr_images.shape[0]
+
+        loss, gradient_norm = train_one_batch(
+            model=model,
+            scheduler=scheduler,
+            optimizer=optimizer,
+            hr_images=hr_images,
+            conditions=conditions,
+            max_gradient_norm=max_gradient_norm,
+        )
+
+        total_loss += loss * batch_size
+
+        total_gradient_norm += (
+            gradient_norm * batch_size
+        )
+
+        total_samples += batch_size
+
+    if total_samples == 0:
+        raise ValueError(
+            "Training data loader is empty"
+        )
+
+    mean_loss = total_loss / total_samples
+
+    mean_gradient_norm = (
+        total_gradient_norm / total_samples
+    )
+
+    return (
+        mean_loss,
+        mean_gradient_norm,
+    )

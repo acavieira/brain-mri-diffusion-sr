@@ -7,9 +7,10 @@ from mri_diffusion.scheduler import (
 from mri_diffusion.training import (
     calculate_training_loss,
     train_one_batch,
+    train_one_epoch,
 )
 from mri_diffusion.unet import ConditionalUNet
-
+from torch.utils.data import DataLoader
 
 def create_small_model():
     return ConditionalUNet(
@@ -171,4 +172,111 @@ def test_train_one_batch_rejects_invalid_gradient_norm():
             hr_images=hr_images,
             conditions=conditions,
             max_gradient_norm=0.0,
+        )
+
+def create_training_data_loader():
+    samples = []
+
+    for _ in range(4):
+        samples.append(
+            {
+                "hr": (
+                    torch.rand(
+                        (1, 16, 16),
+                        dtype=torch.float32,
+                    )
+                    * 2.0
+                    - 1.0
+                ),
+                "condition": (
+                    torch.rand(
+                        (1, 16, 16),
+                        dtype=torch.float32,
+                    )
+                    * 2.0
+                    - 1.0
+                ),
+            }
+        )
+
+    return DataLoader(
+        samples,
+        batch_size=2,
+        shuffle=False,
+    )
+
+
+def test_train_one_epoch_updates_model():
+    torch.manual_seed(23)
+
+    model = create_small_model()
+    scheduler = create_test_scheduler()
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=0.001,
+    )
+
+    data_loader = create_training_data_loader()
+
+    weight_before_training = (
+        model
+        .output_convolution
+        .weight
+        .detach()
+        .clone()
+    )
+
+    mean_loss, mean_gradient_norm = (
+        train_one_epoch(
+            model=model,
+            scheduler=scheduler,
+            optimizer=optimizer,
+            data_loader=data_loader,
+            device="cpu",
+            max_gradient_norm=1.0,
+        )
+    )
+
+    weight_after_training = (
+        model
+        .output_convolution
+        .weight
+        .detach()
+    )
+
+    assert mean_loss >= 0.0
+    assert mean_gradient_norm >= 0.0
+
+    assert not torch.equal(
+        weight_before_training,
+        weight_after_training,
+    )
+
+
+def test_train_one_epoch_rejects_empty_loader():
+    model = create_small_model()
+    scheduler = create_test_scheduler()
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=0.001,
+    )
+
+    empty_loader = DataLoader(
+        [],
+        batch_size=2,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="empty",
+    ):
+        train_one_epoch(
+            model=model,
+            scheduler=scheduler,
+            optimizer=optimizer,
+            data_loader=empty_loader,
+            device="cpu",
+            max_gradient_norm=1.0,
         )
