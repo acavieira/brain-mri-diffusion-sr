@@ -191,3 +191,121 @@ def test_add_noise_rejects_invalid_inputs():
                 dtype=torch.long,
             ),
         )
+
+def test_posterior_variances_are_valid():
+    scheduler = create_test_scheduler()
+
+    assert scheduler.posterior_variances.shape == (
+        10,
+    )
+
+    assert scheduler.posterior_variances[0] == 0.0
+
+    assert torch.all(
+        scheduler.posterior_variances >= 0.0
+    )
+
+
+def test_reverse_step_matches_ddpm_formula():
+    scheduler = create_test_scheduler()
+
+    noisy_images = torch.full(
+        (1, 1, 2, 2),
+        0.5,
+        dtype=torch.float32,
+    )
+
+    predicted_noise = torch.full(
+        (1, 1, 2, 2),
+        0.25,
+        dtype=torch.float32,
+    )
+
+    random_noise = torch.full(
+        (1, 1, 2, 2),
+        1.5,
+        dtype=torch.float32,
+    )
+
+    timesteps = torch.tensor(
+        [9],
+        dtype=torch.long,
+    )
+
+    output = scheduler.reverse_step(
+        noisy_images=noisy_images,
+        predicted_noise=predicted_noise,
+        timesteps=timesteps,
+        random_noise=random_noise,
+    )
+
+    beta = scheduler.betas[9]
+    alpha = scheduler.alphas[9]
+    alpha_bar = scheduler.alpha_bars[9]
+
+    posterior_variance = (
+        scheduler.posterior_variances[9]
+    )
+
+    expected_mean = (
+        1.0 / torch.sqrt(alpha)
+    ) * (
+        noisy_images
+        - (
+            beta
+            / torch.sqrt(1.0 - alpha_bar)
+        )
+        * predicted_noise
+    )
+
+    expected = (
+        expected_mean
+        + torch.sqrt(posterior_variance)
+        * random_noise
+    )
+
+    torch.testing.assert_close(
+        output,
+        expected,
+    )
+
+
+def test_reverse_step_adds_no_noise_at_zero():
+    scheduler = create_test_scheduler()
+
+    noisy_images = torch.randn(
+        (1, 1, 2, 2),
+        dtype=torch.float32,
+    )
+
+    predicted_noise = torch.randn_like(
+        noisy_images
+    )
+
+    timesteps = torch.tensor(
+        [0],
+        dtype=torch.long,
+    )
+
+    first_output = scheduler.reverse_step(
+        noisy_images=noisy_images,
+        predicted_noise=predicted_noise,
+        timesteps=timesteps,
+        random_noise=torch.zeros_like(
+            noisy_images
+        ),
+    )
+
+    second_output = scheduler.reverse_step(
+        noisy_images=noisy_images,
+        predicted_noise=predicted_noise,
+        timesteps=timesteps,
+        random_noise=torch.ones_like(
+            noisy_images
+        ),
+    )
+
+    torch.testing.assert_close(
+        first_output,
+        second_output,
+    )
