@@ -2,6 +2,7 @@
 
 import torch
 from torch.nn import functional as F
+from mri_diffusion.checkpoints import save_checkpoint
 
 
 def calculate_noise_loss(
@@ -230,3 +231,86 @@ def validate_one_epoch(
     mean_loss = total_loss / total_samples
 
     return mean_loss
+
+def fit_model(
+    model,
+    scheduler,
+    optimizer,
+    train_loader,
+    validation_loader,
+    device,
+    num_epochs,
+    max_gradient_norm,
+    validation_seed,
+    checkpoint_path,
+):
+    """Train, validate, and save the best model."""
+
+    if num_epochs <= 0:
+        raise ValueError(
+            "Number of epochs must be positive"
+        )
+
+    history = []
+    best_validation_loss = float("inf")
+
+    for epoch in range(1, num_epochs + 1):
+        train_loss, gradient_norm = (
+            train_one_epoch(
+                model=model,
+                scheduler=scheduler,
+                optimizer=optimizer,
+                data_loader=train_loader,
+                device=device,
+                max_gradient_norm=max_gradient_norm,
+            )
+        )
+
+        validation_loss = validate_one_epoch(
+            model=model,
+            scheduler=scheduler,
+            data_loader=validation_loader,
+            device=device,
+            random_seed=validation_seed,
+        )
+
+        is_best_checkpoint = (
+            validation_loss
+            < best_validation_loss
+        )
+
+        if is_best_checkpoint:
+            best_validation_loss = validation_loss
+
+            save_checkpoint(
+                path=checkpoint_path,
+                model=model,
+                optimizer=optimizer,
+                epoch=epoch,
+                train_loss=train_loss,
+                validation_loss=validation_loss,
+            )
+
+        epoch_result = {
+            "epoch": epoch,
+            "train_loss": train_loss,
+            "validation_loss": validation_loss,
+            "gradient_norm": gradient_norm,
+            "best_checkpoint": is_best_checkpoint,
+        }
+
+        history.append(
+            epoch_result
+        )
+
+        print(
+            f"Epoch {epoch:03d}: "
+            f"train_loss={train_loss:.6f}, "
+            f"validation_loss="
+            f"{validation_loss:.6f}, "
+            f"gradient_norm="
+            f"{gradient_norm:.6f}, "
+            f"best={is_best_checkpoint}"
+        )
+
+    return history

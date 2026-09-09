@@ -7,6 +7,7 @@ from mri_diffusion.scheduler import (
 from mri_diffusion.training import (
     calculate_noise_loss,
     calculate_training_loss,
+    fit_model,
     train_one_batch,
     train_one_epoch,
     validate_one_epoch,
@@ -372,4 +373,106 @@ def test_validation_rejects_empty_loader():
             data_loader=empty_loader,
             device="cpu",
             random_seed=23,
+        )
+
+def test_fit_model_saves_best_validation_checkpoint(
+    tmp_path,
+):
+    torch.manual_seed(23)
+
+    model = create_small_model()
+    scheduler = create_test_scheduler()
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=0.001,
+    )
+
+    train_loader = (
+        create_training_data_loader()
+    )
+
+    validation_loader = (
+        create_training_data_loader()
+    )
+
+    checkpoint_path = (
+        tmp_path / "best_model.pt"
+    )
+
+    history = fit_model(
+        model=model,
+        scheduler=scheduler,
+        optimizer=optimizer,
+        train_loader=train_loader,
+        validation_loader=validation_loader,
+        device="cpu",
+        num_epochs=2,
+        max_gradient_norm=1.0,
+        validation_seed=23,
+        checkpoint_path=checkpoint_path,
+    )
+
+    assert len(history) == 2
+    assert checkpoint_path.exists()
+
+    checkpoint = torch.load(
+        checkpoint_path,
+        map_location="cpu",
+        weights_only=True,
+    )
+
+    best_result = min(
+        history,
+        key=lambda result: result[
+            "validation_loss"
+        ],
+    )
+
+    assert checkpoint["epoch"] == (
+        best_result["epoch"]
+    )
+
+    assert checkpoint[
+        "validation_loss"
+    ] == pytest.approx(
+        best_result["validation_loss"]
+    )
+
+    assert any(
+        result["best_checkpoint"]
+        for result in history
+    )
+
+
+def test_fit_model_rejects_invalid_epoch_count(
+    tmp_path,
+):
+    model = create_small_model()
+    scheduler = create_test_scheduler()
+
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=0.001,
+    )
+
+    data_loader = create_training_data_loader()
+
+    with pytest.raises(
+        ValueError,
+        match="positive",
+    ):
+        fit_model(
+            model=model,
+            scheduler=scheduler,
+            optimizer=optimizer,
+            train_loader=data_loader,
+            validation_loader=data_loader,
+            device="cpu",
+            num_epochs=0,
+            max_gradient_norm=1.0,
+            validation_seed=23,
+            checkpoint_path=(
+                tmp_path / "best_model.pt"
+            ),
         )
