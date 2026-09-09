@@ -547,3 +547,123 @@ class UNetBottleneck(nn.Module):
         )
 
         return output
+
+class UNetDecoder(nn.Module):
+    """Restore spatial resolution using encoder skip connections."""
+
+    def __init__(
+        self,
+        base_channels,
+        time_embedding_dim,
+        group_count,
+    ):
+        super().__init__()
+
+        first_channels = base_channels
+        second_channels = base_channels * 2
+        third_channels = base_channels * 4
+
+        self.third_upsample = Upsample(
+            channels=third_channels
+        )
+
+        self.third_block = ResidualBlock(
+            input_channels=third_channels * 2,
+            output_channels=third_channels,
+            time_embedding_dim=time_embedding_dim,
+            group_count=group_count,
+        )
+
+        self.second_upsample = Upsample(
+            channels=third_channels
+        )
+
+        self.second_block = ResidualBlock(
+            input_channels=(
+                third_channels + second_channels
+            ),
+            output_channels=second_channels,
+            time_embedding_dim=time_embedding_dim,
+            group_count=group_count,
+        )
+
+        self.first_upsample = Upsample(
+            channels=second_channels
+        )
+
+        self.first_block = ResidualBlock(
+            input_channels=(
+                second_channels + first_channels
+            ),
+            output_channels=first_channels,
+            time_embedding_dim=time_embedding_dim,
+            group_count=group_count,
+        )
+
+    def forward(
+        self,
+        image_features,
+        time_embedding,
+        skip_connections,
+    ):
+        if len(skip_connections) != 3:
+            raise ValueError(
+                "Decoder requires three skip connections"
+            )
+
+        first_skip = skip_connections[0]
+        second_skip = skip_connections[1]
+        third_skip = skip_connections[2]
+
+        hidden = self.third_upsample(
+            image_features
+        )
+
+        hidden = torch.cat(
+            (
+                hidden,
+                third_skip,
+            ),
+            dim=1,
+        )
+
+        hidden = self.third_block(
+            hidden,
+            time_embedding,
+        )
+
+        hidden = self.second_upsample(
+            hidden
+        )
+
+        hidden = torch.cat(
+            (
+                hidden,
+                second_skip,
+            ),
+            dim=1,
+        )
+
+        hidden = self.second_block(
+            hidden,
+            time_embedding,
+        )
+
+        hidden = self.first_upsample(
+            hidden
+        )
+
+        hidden = torch.cat(
+            (
+                hidden,
+                first_skip,
+            ),
+            dim=1,
+        )
+
+        output = self.first_block(
+            hidden,
+            time_embedding,
+        )
+
+        return output

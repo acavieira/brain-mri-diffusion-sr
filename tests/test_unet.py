@@ -8,6 +8,7 @@ from mri_diffusion.unet import (
     SinusoidalTimeEmbedding,
     TimeEmbedding,
     UNetBottleneck,
+    UNetDecoder,
     UNetEncoder,
     Upsample,
 )
@@ -762,3 +763,143 @@ def test_unet_bottleneck_receives_gradients():
 
     for parameter in bottleneck.parameters():
         assert parameter.grad is not None
+
+
+def create_unet_decoder():
+    return UNetDecoder(
+        base_channels=64,
+        time_embedding_dim=256,
+        group_count=8,
+    )
+
+
+def create_decoder_inputs():
+    image_features = torch.randn(
+        (1, 256, 2, 2),
+        dtype=torch.float32,
+    )
+
+    time_embedding = torch.randn(
+        (1, 256),
+        dtype=torch.float32,
+    )
+
+    skip_connections = (
+        torch.randn(
+            (1, 64, 16, 16),
+            dtype=torch.float32,
+        ),
+        torch.randn(
+            (1, 128, 8, 8),
+            dtype=torch.float32,
+        ),
+        torch.randn(
+            (1, 256, 4, 4),
+            dtype=torch.float32,
+        ),
+    )
+
+    return (
+        image_features,
+        time_embedding,
+        skip_connections,
+    )
+
+
+def test_unet_decoder_has_expected_shape():
+    decoder = create_unet_decoder()
+
+    (
+        image_features,
+        time_embedding,
+        skip_connections,
+    ) = create_decoder_inputs()
+
+    output = decoder(
+        image_features,
+        time_embedding,
+        skip_connections,
+    )
+
+    assert output.shape == (
+        1,
+        64,
+        16,
+        16,
+    )
+
+
+def test_unet_decoder_receives_gradients():
+    decoder = create_unet_decoder()
+
+    image_features = torch.randn(
+        (1, 256, 2, 2),
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+
+    time_embedding = torch.randn(
+        (1, 256),
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+
+    skip_connections = (
+        torch.randn(
+            (1, 64, 16, 16),
+            dtype=torch.float32,
+            requires_grad=True,
+        ),
+        torch.randn(
+            (1, 128, 8, 8),
+            dtype=torch.float32,
+            requires_grad=True,
+        ),
+        torch.randn(
+            (1, 256, 4, 4),
+            dtype=torch.float32,
+            requires_grad=True,
+        ),
+    )
+
+    output = decoder(
+        image_features,
+        time_embedding,
+        skip_connections,
+    )
+
+    loss = output.square().mean()
+    loss.backward()
+
+    assert image_features.grad is not None
+    assert time_embedding.grad is not None
+
+    for skip_connection in skip_connections:
+        assert skip_connection.grad is not None
+
+    for parameter in decoder.parameters():
+        assert parameter.grad is not None
+
+
+def test_unet_decoder_requires_three_skips():
+    decoder = create_unet_decoder()
+
+    image_features = torch.randn(
+        (1, 256, 2, 2),
+        dtype=torch.float32,
+    )
+
+    time_embedding = torch.randn(
+        (1, 256),
+        dtype=torch.float32,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="three skip connections",
+    ):
+        decoder(
+            image_features,
+            time_embedding,
+            skip_connections=(),
+        )
