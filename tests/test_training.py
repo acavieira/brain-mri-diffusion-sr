@@ -5,9 +5,11 @@ from mri_diffusion.scheduler import (
     DiffusionScheduler,
 )
 from mri_diffusion.training import (
+    calculate_noise_loss,
     calculate_training_loss,
     train_one_batch,
     train_one_epoch,
+    validate_one_epoch,
 )
 from mri_diffusion.unet import ConditionalUNet
 from torch.utils.data import DataLoader
@@ -279,4 +281,95 @@ def test_train_one_epoch_rejects_empty_loader():
             data_loader=empty_loader,
             device="cpu",
             max_gradient_norm=1.0,
+        )
+
+def test_validation_loss_is_deterministic():
+    torch.manual_seed(23)
+
+    model = create_small_model()
+    scheduler = create_test_scheduler()
+    data_loader = create_training_data_loader()
+
+    first_loss = validate_one_epoch(
+        model=model,
+        scheduler=scheduler,
+        data_loader=data_loader,
+        device="cpu",
+        random_seed=23,
+    )
+
+    second_loss = validate_one_epoch(
+        model=model,
+        scheduler=scheduler,
+        data_loader=data_loader,
+        device="cpu",
+        random_seed=23,
+    )
+
+    assert first_loss == pytest.approx(
+        second_loss,
+        abs=0.0000001,
+    )
+
+
+def test_validation_does_not_change_model():
+    torch.manual_seed(23)
+
+    model = create_small_model()
+    scheduler = create_test_scheduler()
+    data_loader = create_training_data_loader()
+
+    weight_before_validation = (
+        model
+        .output_convolution
+        .weight
+        .detach()
+        .clone()
+    )
+
+    validation_loss = validate_one_epoch(
+        model=model,
+        scheduler=scheduler,
+        data_loader=data_loader,
+        device="cpu",
+        random_seed=23,
+    )
+
+    weight_after_validation = (
+        model
+        .output_convolution
+        .weight
+        .detach()
+    )
+
+    assert validation_loss >= 0.0
+
+    assert torch.equal(
+        weight_before_validation,
+        weight_after_validation,
+    )
+
+    for parameter in model.parameters():
+        assert parameter.grad is None
+
+
+def test_validation_rejects_empty_loader():
+    model = create_small_model()
+    scheduler = create_test_scheduler()
+
+    empty_loader = DataLoader(
+        [],
+        batch_size=2,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="empty",
+    ):
+        validate_one_epoch(
+            model=model,
+            scheduler=scheduler,
+            data_loader=empty_loader,
+            device="cpu",
+            random_seed=23,
         )

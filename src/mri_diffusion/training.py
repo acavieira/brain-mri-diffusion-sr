@@ -4,23 +4,15 @@ import torch
 from torch.nn import functional as F
 
 
-def calculate_training_loss(
+def calculate_noise_loss(
     model,
     scheduler,
     hr_images,
     conditions,
+    timesteps,
+    true_noise,
 ):
-    """Calculate the DDPM noise-prediction loss."""
-
-    batch_size = hr_images.shape[0]
-
-    timesteps = scheduler.sample_timesteps(
-        batch_size=batch_size
-    )
-
-    true_noise = torch.randn_like(
-        hr_images
-    )
+    """Compare predicted and true diffusion noise."""
 
     noisy_images = scheduler.add_noise(
         clean_images=hr_images,
@@ -37,6 +29,35 @@ def calculate_training_loss(
     loss = F.mse_loss(
         predicted_noise,
         true_noise,
+    )
+
+    return loss
+
+def calculate_training_loss(
+    model,
+    scheduler,
+    hr_images,
+    conditions,
+):
+    """Calculate loss using random timesteps and noise."""
+
+    batch_size = hr_images.shape[0]
+
+    timesteps = scheduler.sample_timesteps(
+        batch_size=batch_size
+    )
+
+    true_noise = torch.randn_like(
+        hr_images
+    )
+
+    loss = calculate_noise_loss(
+        model=model,
+        scheduler=scheduler,
+        hr_images=hr_images,
+        conditions=conditions,
+        timesteps=timesteps,
+        true_noise=true_noise,
     )
 
     return loss
@@ -140,3 +161,72 @@ def train_one_epoch(
         mean_loss,
         mean_gradient_norm,
     )
+
+def validate_one_epoch(
+    model,
+    scheduler,
+    data_loader,
+    device,
+    random_seed,
+):
+    """Calculate deterministic validation loss."""
+
+    model.eval()
+
+    validation_generator = torch.Generator()
+    validation_generator.manual_seed(
+        random_seed
+    )
+
+    total_loss = 0.0
+    total_samples = 0
+
+    with torch.inference_mode():
+        for batch in data_loader:
+            hr_images = batch["hr"].to(
+                device
+            )
+
+            conditions = batch["condition"].to(
+                device
+            )
+
+            batch_size = hr_images.shape[0]
+
+            timesteps = torch.randint(
+                low=0,
+                high=scheduler.diffusion_steps,
+                size=(batch_size,),
+                generator=validation_generator,
+                dtype=torch.long,
+            ).to(device)
+
+            true_noise = torch.randn(
+                hr_images.shape,
+                generator=validation_generator,
+                dtype=hr_images.dtype,
+            ).to(device)
+
+            loss = calculate_noise_loss(
+                model=model,
+                scheduler=scheduler,
+                hr_images=hr_images,
+                conditions=conditions,
+                timesteps=timesteps,
+                true_noise=true_noise,
+            )
+
+            total_loss += (
+                loss.item() * batch_size
+            )
+
+            total_samples += batch_size
+
+    if total_samples == 0:
+        raise ValueError(
+            "Validation data loader is empty"
+        )
+
+    mean_loss = total_loss / total_samples
+
+    return mean_loss
