@@ -7,6 +7,8 @@ from mri_diffusion.unet import (
     ResidualBlock,
     SinusoidalTimeEmbedding,
     TimeEmbedding,
+    UNetBottleneck,
+    UNetEncoder,
     Upsample,
 )
 
@@ -609,3 +611,154 @@ def test_conditional_input_block_receives_gradients():
     assert noisy_images.grad is not None
     assert conditions.grad is not None
     assert input_block.convolution.weight.grad is not None
+
+
+def create_unet_encoder():
+    return UNetEncoder(
+        base_channels=64,
+        time_embedding_dim=256,
+        group_count=8,
+    )
+
+
+def test_unet_encoder_has_expected_shapes():
+    encoder = create_unet_encoder()
+
+    image_features = torch.randn(
+        (2, 64, 32, 32),
+        dtype=torch.float32,
+    )
+
+    time_embedding = torch.randn(
+        (2, 256),
+        dtype=torch.float32,
+    )
+
+    output, skip_connections = encoder(
+        image_features,
+        time_embedding,
+    )
+
+    assert output.shape == (
+        2,
+        256,
+        4,
+        4,
+    )
+
+    assert len(skip_connections) == 3
+
+    assert skip_connections[0].shape == (
+        2,
+        64,
+        32,
+        32,
+    )
+
+    assert skip_connections[1].shape == (
+        2,
+        128,
+        16,
+        16,
+    )
+
+    assert skip_connections[2].shape == (
+        2,
+        256,
+        8,
+        8,
+    )
+
+
+def test_unet_encoder_receives_gradients():
+    encoder = create_unet_encoder()
+
+    image_features = torch.randn(
+        (1, 64, 16, 16),
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+
+    time_embedding = torch.randn(
+        (1, 256),
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+
+    output, skip_connections = encoder(
+        image_features,
+        time_embedding,
+    )
+
+    loss = output.square().mean()
+    loss.backward()
+
+    assert image_features.grad is not None
+    assert time_embedding.grad is not None
+
+    for parameter in encoder.parameters():
+        assert parameter.grad is not None
+
+
+def create_unet_bottleneck():
+    return UNetBottleneck(
+        channels=256,
+        time_embedding_dim=256,
+        group_count=8,
+    )
+
+
+def test_unet_bottleneck_preserves_shape():
+    bottleneck = create_unet_bottleneck()
+
+    image_features = torch.randn(
+        (2, 256, 4, 4),
+        dtype=torch.float32,
+    )
+
+    time_embedding = torch.randn(
+        (2, 256),
+        dtype=torch.float32,
+    )
+
+    output = bottleneck(
+        image_features,
+        time_embedding,
+    )
+
+    assert output.shape == (
+        2,
+        256,
+        4,
+        4,
+    )
+
+
+def test_unet_bottleneck_receives_gradients():
+    bottleneck = create_unet_bottleneck()
+
+    image_features = torch.randn(
+        (1, 256, 4, 4),
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+
+    time_embedding = torch.randn(
+        (1, 256),
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+
+    output = bottleneck(
+        image_features,
+        time_embedding,
+    )
+
+    loss = output.square().mean()
+    loss.backward()
+
+    assert image_features.grad is not None
+    assert time_embedding.grad is not None
+
+    for parameter in bottleneck.parameters():
+        assert parameter.grad is not None

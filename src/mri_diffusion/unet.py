@@ -415,3 +415,135 @@ class ConditionalInputBlock(nn.Module):
         )
 
         return output
+
+
+class UNetEncoder(nn.Module):
+    """Compress image features and save skip connections."""
+
+    def __init__(
+        self,
+        base_channels,
+        time_embedding_dim,
+        group_count,
+    ):
+        super().__init__()
+
+        first_channels = base_channels
+        second_channels = base_channels * 2
+        third_channels = base_channels * 4
+
+        self.first_block = ResidualBlock(
+            input_channels=first_channels,
+            output_channels=first_channels,
+            time_embedding_dim=time_embedding_dim,
+            group_count=group_count,
+        )
+
+        self.first_downsample = Downsample(
+            channels=first_channels
+        )
+
+        self.second_block = ResidualBlock(
+            input_channels=first_channels,
+            output_channels=second_channels,
+            time_embedding_dim=time_embedding_dim,
+            group_count=group_count,
+        )
+
+        self.second_downsample = Downsample(
+            channels=second_channels
+        )
+
+        self.third_block = ResidualBlock(
+            input_channels=second_channels,
+            output_channels=third_channels,
+            time_embedding_dim=time_embedding_dim,
+            group_count=group_count,
+        )
+
+        self.third_downsample = Downsample(
+            channels=third_channels
+        )
+
+    def forward(
+        self,
+        image_features,
+        time_embedding,
+    ):
+        first_skip = self.first_block(
+            image_features,
+            time_embedding,
+        )
+
+        hidden = self.first_downsample(
+            first_skip
+        )
+
+        second_skip = self.second_block(
+            hidden,
+            time_embedding,
+        )
+
+        hidden = self.second_downsample(
+            second_skip
+        )
+
+        third_skip = self.third_block(
+            hidden,
+            time_embedding,
+        )
+
+        hidden = self.third_downsample(
+            third_skip
+        )
+
+        skip_connections = (
+            first_skip,
+            second_skip,
+            third_skip,
+        )
+
+        return hidden, skip_connections
+
+
+class UNetBottleneck(nn.Module):
+    """Process the most compressed U-Net features."""
+
+    def __init__(
+        self,
+        channels,
+        time_embedding_dim,
+        group_count,
+    ):
+        super().__init__()
+
+        self.first_block = ResidualBlock(
+            input_channels=channels,
+            output_channels=channels,
+            time_embedding_dim=time_embedding_dim,
+            group_count=group_count,
+        )
+
+        self.second_block = ResidualBlock(
+            input_channels=channels,
+            output_channels=channels,
+            time_embedding_dim=time_embedding_dim,
+            group_count=group_count,
+        )
+
+    def forward(
+        self,
+        image_features,
+        time_embedding,
+    ):
+        hidden = self.first_block(
+            image_features,
+            time_embedding,
+        )
+
+        output = self.second_block(
+            hidden,
+            time_embedding,
+        )
+
+        return output
