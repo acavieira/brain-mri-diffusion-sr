@@ -667,3 +667,116 @@ class UNetDecoder(nn.Module):
         )
 
         return output
+
+
+class ConditionalUNet(nn.Module):
+    """Predict diffusion noise using a degraded MRI condition."""
+
+    def __init__(
+        self,
+        image_channels,
+        condition_channels,
+        base_channels,
+        time_embedding_dim,
+        time_hidden_dim,
+        group_count,
+    ):
+        super().__init__()
+
+        self.input_block = ConditionalInputBlock(
+            image_channels=image_channels,
+            condition_channels=condition_channels,
+            output_channels=base_channels,
+        )
+
+        self.time_embedding = TimeEmbedding(
+            embedding_dim=time_embedding_dim,
+            hidden_dim=time_hidden_dim,
+        )
+
+        self.encoder = UNetEncoder(
+            base_channels=base_channels,
+            time_embedding_dim=time_embedding_dim,
+            group_count=group_count,
+        )
+
+        self.bottleneck = UNetBottleneck(
+            channels=base_channels * 4,
+            time_embedding_dim=time_embedding_dim,
+            group_count=group_count,
+        )
+
+        self.decoder = UNetDecoder(
+            base_channels=base_channels,
+            time_embedding_dim=time_embedding_dim,
+            group_count=group_count,
+        )
+
+        self.output_normalization = nn.GroupNorm(
+            num_groups=group_count,
+            num_channels=base_channels,
+        )
+
+        self.output_activation = nn.SiLU()
+
+        self.output_convolution = nn.Conv2d(
+            in_channels=base_channels,
+            out_channels=image_channels,
+            kernel_size=3,
+            padding=1,
+        )
+
+    def forward(
+        self,
+        noisy_images,
+        conditions,
+        timesteps,
+    ):
+        height = noisy_images.shape[2]
+        width = noisy_images.shape[3]
+
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(
+                "Image height and width must be divisible by 8"
+            )
+
+        time_embedding = self.time_embedding(
+            timesteps
+        )
+
+        input_features = self.input_block(
+            noisy_images,
+            conditions,
+        )
+
+        encoded_features, skip_connections = (
+            self.encoder(
+                input_features,
+                time_embedding,
+            )
+        )
+
+        bottleneck_features = self.bottleneck(
+            encoded_features,
+            time_embedding,
+        )
+
+        decoded_features = self.decoder(
+            bottleneck_features,
+            time_embedding,
+            skip_connections,
+        )
+
+        output = self.output_normalization(
+            decoded_features
+        )
+
+        output = self.output_activation(
+            output
+        )
+
+        predicted_noise = self.output_convolution(
+            output
+        )
+
+        return predicted_noise

@@ -3,6 +3,7 @@ import torch
 
 from mri_diffusion.unet import (
     ConditionalInputBlock,
+    ConditionalUNet,
     Downsample,
     ResidualBlock,
     SinusoidalTimeEmbedding,
@@ -902,4 +903,154 @@ def test_unet_decoder_requires_three_skips():
             image_features,
             time_embedding,
             skip_connections=(),
+        )
+
+def create_small_conditional_unet():
+    return ConditionalUNet(
+        image_channels=1,
+        condition_channels=1,
+        base_channels=8,
+        time_embedding_dim=16,
+        time_hidden_dim=32,
+        group_count=4,
+    )
+
+
+def test_conditional_unet_has_expected_output_shape():
+    model = create_small_conditional_unet()
+
+    noisy_images = torch.randn(
+        (2, 1, 16, 16),
+        dtype=torch.float32,
+    )
+
+    conditions = torch.randn(
+        (2, 1, 16, 16),
+        dtype=torch.float32,
+    )
+
+    timesteps = torch.tensor(
+        [0, 999],
+        dtype=torch.long,
+    )
+
+    predicted_noise = model(
+        noisy_images,
+        conditions,
+        timesteps,
+    )
+
+    assert predicted_noise.shape == (
+        2,
+        1,
+        16,
+        16,
+    )
+
+
+def test_conditional_unet_uses_condition():
+    torch.manual_seed(23)
+
+    model = create_small_conditional_unet()
+
+    noisy_images = torch.zeros(
+        (1, 1, 16, 16),
+        dtype=torch.float32,
+    )
+
+    first_condition = torch.zeros(
+        (1, 1, 16, 16),
+        dtype=torch.float32,
+    )
+
+    second_condition = torch.ones(
+        (1, 1, 16, 16),
+        dtype=torch.float32,
+    )
+
+    timesteps = torch.tensor(
+        [500],
+        dtype=torch.long,
+    )
+
+    first_output = model(
+        noisy_images,
+        first_condition,
+        timesteps,
+    )
+
+    second_output = model(
+        noisy_images,
+        second_condition,
+        timesteps,
+    )
+
+    assert not torch.allclose(
+        first_output,
+        second_output,
+    )
+
+
+def test_conditional_unet_receives_gradients():
+    model = create_small_conditional_unet()
+
+    noisy_images = torch.randn(
+        (1, 1, 16, 16),
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+
+    conditions = torch.randn(
+        (1, 1, 16, 16),
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+
+    timesteps = torch.tensor(
+        [500],
+        dtype=torch.long,
+    )
+
+    predicted_noise = model(
+        noisy_images,
+        conditions,
+        timesteps,
+    )
+
+    loss = predicted_noise.square().mean()
+    loss.backward()
+
+    assert noisy_images.grad is not None
+    assert conditions.grad is not None
+
+    for parameter in model.parameters():
+        assert parameter.grad is not None
+
+
+def test_conditional_unet_rejects_invalid_image_size():
+    model = create_small_conditional_unet()
+
+    noisy_images = torch.zeros(
+        (1, 1, 18, 16),
+        dtype=torch.float32,
+    )
+
+    conditions = torch.zeros(
+        (1, 1, 18, 16),
+        dtype=torch.float32,
+    )
+
+    timesteps = torch.tensor(
+        [500],
+        dtype=torch.long,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="divisible by 8",
+    ):
+        model(
+            noisy_images,
+            conditions,
+            timesteps,
         )
