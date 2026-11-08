@@ -4,9 +4,9 @@
 
 Takes 8 training slices at 64x64 and a small U-Net. The loss should go down
 and the PSNR of the sampled slices should pass the bicubic value printed at
-the start, on synthetic slices that took about 500 steps. Passing only says
-that nothing is broken, it says nothing about generalisation. Takes a few
-minutes on a laptop.
+the start, on real UltraCortex slices that took 500 to 750 steps. Passing
+only says that nothing is broken, it says nothing about generalisation.
+Takes a few minutes on a laptop.
 """
 
 import sys

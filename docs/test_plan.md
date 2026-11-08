@@ -26,13 +26,14 @@ if the DataLoader complains on macOS.
 ## 1. Data for the pilot (Mac)
 
 Put the dataset in `data/ds005216` with its BIDS layout
-(`sub-XX/anat/sub-XX_..._T1w.nii.gz`). For the pilot only the first 10
-subjects are needed. If the download is not finished yet, the AWS command
-line can fetch only the T1w files:
+(`sub-XX/ses-Y/anat/sub-XX_ses-Y_T1w.nii.gz`, uncompressed `.nii` files
+work too). For the pilot only the first 10 subjects are needed. If the
+download is not finished yet, the AWS command line can fetch only the T1w
+files:
 
 ```bash
 aws s3 sync --no-sign-request s3://openneuro.org/ds005216 data/ds005216 \
-    --exclude "*" --include "sub-*/anat/*_T1w.nii.gz"
+    --exclude "*" --include "sub-*_T1w.nii.gz"
 ```
 
 Then, with `MAX_SUBJECTS = 10` in `config.py`:
@@ -51,6 +52,13 @@ Open `data/cache/preview.png` and check that
   brain threshold of psnr_brain will also count background pixels, and it
   is better to know that now.
 
+A first run on three volumes (sub-0, sub-45 and sub-56) worked and the
+slices were upright and centred. sub-0 and sub-56, which look like MP2RAGE,
+do have bright noise around the skull and in the neck. Bicubic gets 20.9 dB
+psnr_brain on sub-56 against 25.9 dB on sub-45, mostly because of that
+noise. It affects every method in the same way, so the comparison stays
+fair, but keep the scan type in mind when comparing subjects.
+
 ## 2. Overfitting check (Mac)
 
 ```bash
@@ -59,8 +67,9 @@ python scripts/overfit_check.py
 
 Eight slices at 64 x 64 and a small U-Net, a few minutes on the Mac. The
 loss has to go down and the diffusion PSNR has to pass the bicubic value
-printed at the start. On synthetic slices it passed bicubic after 500 steps
-and was about 4 dB above it after 1000. If it stays far below bicubic,
+printed at the start. On real UltraCortex slices it went from 18.4 dB at
+step 250 to 29.4 dB at step 1500, against 20.6 dB for bicubic, and passed
+bicubic between steps 500 and 750. If it stays far below bicubic,
 something is broken and there is no point in going to Colab yet. Look at
 `runs/overfit_check.png`.
 
