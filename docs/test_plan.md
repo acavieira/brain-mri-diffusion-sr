@@ -103,12 +103,22 @@ What to look at in `runs/pilot/log.csv`:
 python scripts/evaluate.py
 ```
 
-About 90 test slices with 100 DDIM steps, a few minutes on a T4. Check
+About 90 test slices, each sampled 4 times with 100 DDIM steps. Check
 
-- `test/summary.csv`, diffusion against bicubic and Lanczos,
+- `test/summary.csv`, where `diffusion` is one sample and `diffusion_mean`
+  the mean of the four, against bicubic and Lanczos,
 - `test/metrics.csv` split by orientation, in case one orientation is worse,
-- `test/examples`, especially the error maps. Bright spots inside the brain
-  are details the model invented.
+- `test/examples`, especially the error maps and the spread of the samples.
+  Bright spots inside the brain in the error map are details the model got
+  wrong or invented, and the spread shows where it was unsure.
+
+A first CPU test on a subject the model never saw (sub-56, a 1.2M parameter
+model at 128 x 128 trained for 2000 steps on sub-0 and sub-45) gave
+18.7 dB psnr_brain for one sample, 20.2 dB for the mean of four and 19.7 dB
+for bicubic. The mean beat bicubic on all 90 slices. One sample has a fine
+grain that changes from sample to sample, and the mean removes most of it.
+If evaluation takes too long on the full test set, `TEST_SAMPLES` in
+`config.py` sets the number of samples.
 
 The pilot is a check of the pipeline, not a result. One test subject is not
 enough to say anything about generalisation.

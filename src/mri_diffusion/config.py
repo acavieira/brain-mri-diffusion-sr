@@ -63,3 +63,4 @@ VALIDATE_EVERY = 2000
 VAL_SAMPLES = 16
 VAL_SAMPLING_STEPS = 50
 TEST_SAMPLING_STEPS = 100
+TEST_SAMPLES = 4           # samples per test slice, evaluate.py reports one and their mean

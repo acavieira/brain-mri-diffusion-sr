@@ -61,7 +61,8 @@ config.json      settings used
 log.csv          losses, validation PSNR and SSIM over training
 last.pt          everything needed to resume
 best.pt          EMA weights with the best validation psnr_brain
-test/            metrics.csv, summary.csv, sr.npz and example figures
+test/            metrics.csv, summary.csv, sr.npz (one sample, the mean of
+                 TEST_SAMPLES samples and their spread) and example figures
 ```
 
 ## Related repositories

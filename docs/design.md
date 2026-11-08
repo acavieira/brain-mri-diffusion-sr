@@ -86,6 +86,18 @@ can still be the better reconstruction, so the example figures and the error
 maps matter as much as the table. The error maps are also where invented
 structures would show up.
 
+Each test slice is sampled `TEST_SAMPLES` = 4 times. The summary has one
+sample (`diffusion`) and the mean of the four (`diffusion_mean`), and the
+standard deviation across the samples is saved as a map of where the model
+is unsure. One sample is one plausible HR slice, and Blau & Michaeli (2018)
+show that sampling like this has exactly twice the MSE of the posterior
+mean. The mean of a few samples moves towards that mean. In a first test on
+a subject the model never saw (sub-56, a CPU model at 128 x 128 with 1.2M
+parameters, trained for 2000 steps on sub-0 and sub-45), one sample scored
+18.7 dB psnr_brain against 19.7 dB for bicubic, because of a fine grain that
+changes from sample to sample. The mean of four scored 20.2 dB and beat
+bicubic on all 90 slices, with SSIM 0.794 against 0.737.
+
 ## Left out on purpose
 
 - Learned variances and the hybrid loss (Nichol & Dhariwal 2021). They help
@@ -100,6 +112,7 @@ structures would show up.
 
 ## References
 
+- Blau, Y., & Michaeli, T. (2018). The perception-distortion tradeoff. CVPR.
 - Chang, C.-W. et al. (2024). High-resolution MRI synthesis using a data-driven framework with denoising diffusion probabilistic modeling. Physics in Medicine & Biology, 69(4), 045001.
 - Dhariwal, P., & Nichol, A. (2021). Diffusion models beat GANs on image synthesis. NeurIPS 34.
 - Ho, J., Chan, W., Saharia, C., Whang, J., Gao, R., Gritsenko, A., Kingma, D. P., Poole, B., Norouzi, M., Fleet, D. J., & Salimans, T. (2022). Imagen Video: High definition video generation with diffusion models. arXiv:2210.02303.
