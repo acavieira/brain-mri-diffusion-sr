@@ -1,97 +1,75 @@
-# Brain MRI Conditional Diffusion Super-Resolution
+# Brain MRI super-resolution with a conditional diffusion model
 
-This repository contains simple research code for two-dimensional brain MRI super-resolution using a conditional diffusion model trained from scratch.
+A 2D conditional DDPM that turns a degraded brain MRI slice into a slice with
+twice the resolution. It is trained on the 9.4 T UltraCortex images and
+compared with bicubic and Lanczos interpolation on subjects it never saw.
 
-The repository is currently only a foundation. The model has not been implemented yet.
+```text
+UltraCortex T1w volumes
+  -> split by subject (train / val / test)
+  -> 30 central slices per orientation, 256 x 256, intensities in [0, 1]
+  -> degradation: blur, x2 downsampling, Gaussian noise
+  -> condition: bicubic upsampled LR slice
+  -> U-Net learns to predict v, a mix of the added noise and the HR slice
+  -> DDIM sampling on the test subjects
+  -> PSNR, SSIM against HR, next to bicubic and Lanczos
+```
 
-## Scope
+Why each piece is the way it is, with the papers behind it, is in
+[docs/design.md](docs/design.md). The order to run things in, on the Mac and
+on Colab, is in [docs/test_plan.md](docs/test_plan.md).
 
-This project will eventually:
-
-1. Load high-resolution brain MRI volumes in NIfTI format.
-2. Split volumes into training, validation, and test sets by subject.
-3. Extract axial, coronal, and sagittal 2D slices.
-4. Create controlled synthetic low-resolution images.
-5. Use the degraded image as the condition of a DDPM.
-6. Train a U-Net to predict the Gaussian noise added to the HR image.
-7. Select the best checkpoint using validation data.
-8. Generate super-resolved images for previously unseen test subjects.
-9. Compare diffusion with Bicubic and Lanczos using identical test images.
-
-Brain-tumour classification is outside the scope of this repository and will be developed in a separate downstream repository.
-
-## Development principles
-
-- Small files with one clear responsibility.
-- Explicit imports and readable variable names.
-- Documented tensor shapes and mathematical operations.
-- One small Python `config.py`, added later.
-- No complex configuration framework.
-- Deterministic random seeds and dataset splits.
-- Subject-level splitting before slice extraction.
-- No data leakage between train, validation, and test.
-- Validation selects the checkpoint.
-- The test set is reserved for final evaluation.
-- A small overfitting test must pass before full training.
-- Inference initially uses the same diffusion schedule as training.
-
-## Planned source structure
-
-The following files are planned but are not created yet:
+## Layout
 
 ```text
 src/mri_diffusion/
-├── config.py
-├── data.py
-├── degradation.py
-├── scheduler.py
-├── unet.py
-├── training.py
-├── sampling.py
-├── metrics.py
-└── reporting.py
-```
-
-## Planned scripts
-
-The following scripts are planned but are not created yet:
-
-```text
+  config.py        every setting, no command-line arguments
+  data.py          find volumes, split by subject, cache slices, Dataset
+  degradation.py   blur, downsampling and noise, same as the baselines
+  model.py         conditional U-Net with dropout and self-attention
+  diffusion.py     noise schedule, training loss, DDIM / DDPM sampler
+  metrics.py       PSNR and SSIM, same definitions as the baselines
+  utils.py         device, seeds, model from config, EMA
 scripts/
-├── prepare_data.py
-├── train.py
-├── sample.py
-└── evaluate.py
+  prepare_data.py  run once, writes data/cache/{train,val,test}.npz
+  overfit_check.py learn 8 slices at 64 x 64, checks the pipeline
+  train.py         training with EMA, validation and resumable checkpoints
+  evaluate.py      test set, metrics per slice and per method, figures
+notebooks/
+  colab.ipynb      training and evaluation on a Colab GPU
+tests/             short pytest checks
+docs/              design choices and test plan
 ```
 
-## Pipeline
+## Running
+
+```bash
+pip install -r requirements.txt
+python -m pytest
+python scripts/prepare_data.py
+python scripts/overfit_check.py
+python scripts/train.py
+python scripts/evaluate.py
+```
+
+The dataset goes in `data/ds005216` with its BIDS folders (OpenNeuro
+ds005216, version 1.0.0). `MAX_SUBJECTS` in `config.py` is 10 for the pilot,
+set it to `None` to use every subject. Each run writes to `runs/<RUN_NAME>/`:
 
 ```text
-HR NIfTI volumes
-    -> subject-level split
-    -> HR slices
-    -> synthetic LR condition
-    -> conditional DDPM training
-    -> validation checkpoint selection
-    -> test-set sampling
-    -> comparison with HR, Bicubic, and Lanczos
+config.json      settings used
+log.csv          losses, validation PSNR and SSIM over training
+last.pt          everything needed to resume
+best.pt          EMA weights with the best validation psnr_brain
+test/            metrics.csv, summary.csv, sr.npz and example figures
 ```
 
-Classical interpolation baselines are maintained independently in the [brain-mri-sr-baselines repository](https://github.com/acavieira/brain-mri-sr-baselines). Both projects must eventually use identical preprocessing, degradation, splits, and metric definitions.
+## Related repositories
 
-## Development order
-
-1. Repository foundation.
-2. Dataset discovery and subject-level split.
-3. NIfTI loading and slice extraction.
-4. Synthetic degradation and visual validation.
-5. Forward diffusion scheduler and mathematical tests.
-6. Conditional U-Net and tensor-shape tests.
-7. Controlled overfitting on 4–16 slices.
-8. Training and validation loops.
-9. Reverse diffusion sampling.
-10. Final comparison on unseen test subjects.
-
-## Environment
-
-Dependencies will be added after the Python, PyTorch, CUDA, and hardware environment have been confirmed.
+- [brain-mri-sr-baselines](https://github.com/acavieira/brain-mri-sr-baselines)
+  uses the same normalization, slices, degradation and metrics. `evaluate.py`
+  also computes bicubic and Lanczos on exactly the same LR slices, so the
+  comparison inside this repository is paired slice by slice.
+- [brain-mri-few-shot-learning](https://github.com/acavieira/brain-mri-few-shot-learning)
+  holds the tumour classifiers that will later receive the super-resolved
+  images.
