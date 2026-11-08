@@ -17,3 +17,4 @@ results/
 *.pt
 *.pth
 .ipynb_checkpoints/
+runs/

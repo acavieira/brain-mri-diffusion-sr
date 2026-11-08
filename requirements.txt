@@ -1,6 +1,7 @@
 numpy
 nibabel
+opencv-python-headless
+scikit-image
 matplotlib
-opencv-python
-torch
+torch>=2.3
 pytest
