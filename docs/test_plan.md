@@ -26,14 +26,14 @@ if the DataLoader complains on macOS.
 ## 1. Data for the pilot (Mac)
 
 Put the dataset in `data/ds005216` with its BIDS layout
-(`sub-XX/ses-Y/anat/sub-XX_ses-Y_T1w.nii.gz`, uncompressed `.nii` files
-work too). For the pilot only the first 10 subjects are needed. If the
-download is not finished yet, the AWS command line can fetch only the T1w
-files:
+(`sub-XX/ses-Y/anat/sub-XX_ses-Y_T1w.nii`, OpenNeuro keeps the files
+uncompressed, `.nii.gz` works too). For the pilot only the first 10 subjects
+are needed. The AWS command line can fetch only the T1w files, about 4 to
+5 GB for all 86 images, without an account:
 
 ```bash
 aws s3 sync --no-sign-request s3://openneuro.org/ds005216 data/ds005216 \
-    --exclude "*" --include "sub-*_T1w.nii.gz"
+    --exclude "*" --include "sub-*/ses-*/anat/*_T1w.nii"
 ```
 
 Then, with `MAX_SUBJECTS = 10` in `config.py`:
