@@ -35,6 +35,7 @@ scripts/
   overfit_check.py learn 8 slices at 64 x 64, checks the pipeline
   train.py         training with EMA, validation and resumable checkpoints
   evaluate.py      test set, metrics per slice and per method, figures
+  super_resolve_folder.py  x2 for the small images of another 2D dataset
 notebooks/
   colab.ipynb      training and evaluation on a Colab GPU
 tests/             short pytest checks
@@ -50,6 +51,7 @@ python scripts/prepare_data.py
 python scripts/overfit_check.py
 python scripts/train.py
 python scripts/evaluate.py
+python scripts/super_resolve_folder.py
 ```
 
 The dataset goes in `data/ds005216` with its BIDS folders (OpenNeuro
@@ -64,6 +66,12 @@ best.pt          EMA weights with the best validation psnr_brain
 test/            metrics.csv, summary.csv, sr.npz (one sample, the mean of
                  TEST_SAMPLES samples and their spread) and example figures
 ```
+
+`super_resolve_folder.py` applies `best.pt` to another folder of 2D images,
+by default the Kaggle tumour images of brain-mri-few-shot-learning. Images
+smaller than `SR_TARGET_SIZE` are enlarged x2 with the model and with
+bicubic, the rest are copied, so the classifiers can be trained on the
+original, bicubic and diffusion versions (see the end of `docs/test_plan.md`).
 
 ## Related repositories
 

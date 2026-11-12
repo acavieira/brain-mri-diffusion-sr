@@ -64,3 +64,11 @@ VAL_SAMPLES = 16
 VAL_SAMPLING_STEPS = 50
 TEST_SAMPLING_STEPS = 100
 TEST_SAMPLES = 4           # samples per test slice, evaluate.py reports one and their mean
+
+# Applying the trained model to another 2D dataset (scripts/super_resolve_folder.py)
+SR_INPUT_DIR = Path(os.environ.get("MRI_SR_INPUT_DIR", "data/kaggle"))
+SR_OUTPUT_DIR = Path(os.environ.get("MRI_SR_OUTPUT_DIR", "data/kaggle_x2"))
+SR_TARGET_SIZE = 256       # size the classifier will use, smaller images are super-resolved
+SR_SAMPLES = 1             # samples averaged per image
+SR_SAMPLING_STEPS = 50
+SR_BATCH_SIZE = 8          # images of the same size are sampled together

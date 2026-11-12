@@ -141,7 +141,27 @@ on the validation split.
 
 ## 6. After that
 
-The trained model will be applied to the tumour dataset. Before writing that
-script, decide the image size that goes into the model and the size the
-classifiers will see, so the original and super-resolved images reach the
-classifiers in the same format.
+The trained model is then applied to the Kaggle tumour images that the
+classifiers of brain-mri-few-shot-learning use. 70% of them are already
+512 x 512, so only the images whose longest side is below `SR_TARGET_SIZE`
+(256, about 16% of them) are enlarged:
+
+```bash
+python scripts/super_resolve_folder.py
+```
+
+It writes two copies of the dataset with the same class folders, one where
+the small images were enlarged x2 by the model and one where they were
+enlarged by bicubic interpolation, and copies the other images unchanged. On
+Colab, the last cell of the notebook takes the images from the few-shot
+repository and keeps both copies on Drive.
+
+Before running it on every image, look at a few results, above all inside the
+tumours. The model was trained on healthy 9.4 T T1 images and the Kaggle
+images are clinical JPGs, often with contrast, so it may invent detail.
+
+The classifier then has to work at 256 pixels (`img_size = 256` in its
+`config.py`). At 128 it would shrink every image again and the extra detail
+would be lost. It is trained on the original images, on the bicubic copy and
+on the diffusion copy, and the three are compared, also on the small images
+alone, since those are the only ones that change.
