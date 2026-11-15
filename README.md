@@ -36,6 +36,7 @@ scripts/
   train.py         training with EMA, validation and resumable checkpoints
   evaluate.py      test set, metrics per slice and per method, figures
   super_resolve_folder.py  x2 for the small images of another 2D dataset
+  super_resolve_all.py     every image of that dataset at 128 -> 256, with metrics
 notebooks/
   colab.ipynb      training and evaluation on a Colab GPU
 tests/             short pytest checks
@@ -52,6 +53,7 @@ python scripts/overfit_check.py
 python scripts/train.py
 python scripts/evaluate.py
 python scripts/super_resolve_folder.py
+python scripts/super_resolve_all.py
 ```
 
 The dataset goes in `data/ds005216` with its BIDS folders (OpenNeuro
@@ -72,6 +74,12 @@ by default the Kaggle tumour images of brain-mri-few-shot-learning. Images
 smaller than `SR_TARGET_SIZE` are enlarged x2 with the model and with
 bicubic, the rest are copied, so the classifiers can be trained on the
 original, bicubic and diffusion versions (see the end of `docs/test_plan.md`).
+
+`super_resolve_all.py` passes every image of that dataset through the model.
+Each image is resized to 256 x 256 (its HR), degraded like the UltraCortex
+slices to 128 x 128 (its LR) and enlarged back with bicubic and with the
+model, so every class changes in the same way and every image gets PSNR and
+SSIM against its HR.
 
 ## Related repositories
 

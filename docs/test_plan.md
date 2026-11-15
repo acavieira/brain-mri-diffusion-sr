@@ -165,3 +165,15 @@ The classifier then has to work at 256 pixels (`img_size = 256` in its
 would be lost. It is trained on the original images, on the bicubic copy and
 on the diffusion copy, and the three are compared, also on the small images
 alone, since those are the only ones that change.
+
+Only 1175 images are enlarged that way, and 1048 of them are no_tumor, so the
+three versions differ almost only in one class. `super_resolve_all.py` treats
+every image the same. It resizes each one to 256 x 256, which becomes its HR,
+degrades it to 128 x 128 like the UltraCortex slices and enlarges it back with
+bicubic and with the model (the mean of `ALL_SAMPLES` samples). It writes
+`hr/`, `lr/`, `bicubic/` and `diffusion/` with the class folders, and
+`metrics.csv` with PSNR, psnr_brain, SSIM, ssim_brain and MAE of bicubic and
+diffusion against the HR. Images with a side below 256 have no real detail at
+that size, so their rows have `real_hr = 0` and the metrics should be read on
+the others. With 4 samples of 50 steps it takes about 15 hours on a T4, and
+it resumes after a cut session.

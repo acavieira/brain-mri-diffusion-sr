@@ -72,3 +72,8 @@ SR_TARGET_SIZE = 256       # size the classifier will use, smaller images are su
 SR_SAMPLES = 1             # samples averaged per image
 SR_SAMPLING_STEPS = 50
 SR_BATCH_SIZE = 8          # images of the same size are sampled together
+
+# Every image of that dataset at the classifier size (scripts/super_resolve_all.py)
+ALL_OUTPUT_DIR = Path(os.environ.get("MRI_ALL_OUTPUT_DIR", "data/kaggle_256"))
+ALL_SAMPLES = 4            # samples averaged per image, as in the test
+ALL_SAMPLING_STEPS = 50
