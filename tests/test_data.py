@@ -1,251 +1,55 @@
-"""Tests for NIfTI discovery, loading and slice extraction."""
-
-from pathlib import Path
-
-import nibabel as nib
 import numpy as np
-import pytest
+import torch
 
-from mri_diffusion.data import (
-    extract_slice,
-    find_t1w_files,
-    load_canonical_volume,
-    select_centered_indices,
-    subject_id_from_path,
-)
+from mri_diffusion.data import (SliceDataset, fit_to_square, normalize, split_subjects,
+                                subject_of)
+from mri_diffusion.degradation import degrade, make_condition
 
 
-def write_nifti(path, shape, fill_value=0):
-    """Create a small synthetic NIfTI file for a test."""
-    data = np.full(
-        shape,
-        fill_value,
-        dtype=np.float32,
-    )
-    image = nib.Nifti1Image(
-        data,
-        np.eye(4),
-    )
-
-    path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    nib.save(
-        image,
-        str(path),
-    )
+def test_split_has_no_subject_in_two_groups():
+    subjects = [f"sub-{i:02d}" for i in range(78)]
+    splits = split_subjects(subjects, 0.15, 0.15, seed=23)
+    groups = [set(splits[name]) for name in ("train", "val", "test")]
+    assert sum(len(g) for g in groups) == 78
+    assert not (groups[0] & groups[1] or groups[0] & groups[2] or groups[1] & groups[2])
+    assert splits == split_subjects(subjects, 0.15, 0.15, seed=23)
 
 
-def test_find_flat_t1w_file(tmp_path):
-    path = (
-        tmp_path
-        / "data"
-        / "sub-0_ses-1_T1w.nii"
-    )
-    write_nifti(path, (4, 5, 6))
-
-    assert find_t1w_files(path.parent) == [path]
+def test_pilot_split_keeps_one_subject_for_val_and_test():
+    splits = split_subjects([f"sub-{i:02d}" for i in range(10)], 0.15, 0.15, seed=23)
+    assert [len(splits[s]) for s in ("train", "val", "test")] == [8, 1, 1]
 
 
-def test_find_nested_bids_t1w_file(tmp_path):
-    path = (
-        tmp_path
-        / "data"
-        / "sub-0"
-        / "ses-1"
-        / "anat"
-        / "sub-0_ses-1_T1w.nii.gz"
-    )
-    write_nifti(path, (4, 5, 6))
-
-    assert find_t1w_files(tmp_path / "data") == [path]
+def test_subject_id_comes_from_the_bids_path():
+    assert subject_of("ds005216/sub-12/anat/sub-12_acq-mp2rage_T1w.nii.gz") == "sub-12"
 
 
-def test_find_t1w_excludes_derivatives(tmp_path):
-    data_dir = tmp_path / "data"
-
-    raw_path = (
-        data_dir
-        / "sub-0_ses-1_T1w.nii"
-    )
-    derivative_path = (
-        data_dir
-        / "derivatives"
-        / "sub-1_ses-1_T1w.nii"
-    )
-
-    write_nifti(raw_path, (4, 5, 6))
-    write_nifti(derivative_path, (4, 5, 6))
-
-    assert find_t1w_files(data_dir) == [raw_path]
+def test_normalize_maps_to_zero_one():
+    volume = np.random.default_rng(0).normal(100, 20, size=(10, 10, 10)).astype(np.float32)
+    out = normalize(volume)
+    assert out.min() == 0.0 and out.max() == 1.0
 
 
-def test_find_t1w_rejects_missing_directory(tmp_path):
-    with pytest.raises(FileNotFoundError):
-        find_t1w_files(tmp_path / "missing")
+def test_fit_to_square_keeps_the_aspect_ratio():
+    out = fit_to_square(np.ones((200, 100), dtype=np.float32), 256)
+    assert out.shape == (256, 256)
+    assert np.count_nonzero(out.any(axis=0)) == 128
 
 
-def test_find_t1w_rejects_empty_directory(tmp_path):
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-
-    with pytest.raises(FileNotFoundError):
-        find_t1w_files(data_dir)
-
-
-@pytest.mark.parametrize(
-    "path",
-    [
-        Path("data/sub-0_ses-1_T1w.nii"),
-        Path(
-            "data/sub-0/ses-1/anat/"
-            "sub-0_ses-1_T1w.nii"
-        ),
-    ],
-)
-def test_subject_id_from_flat_and_nested_paths(path):
-    assert subject_id_from_path(path) == "sub-0"
+def test_degradation_halves_the_size_and_repeats_with_the_same_seed():
+    hr = np.random.default_rng(0).random((256, 256)).astype(np.float32)
+    lr1 = degrade(hr, np.random.default_rng(5))
+    lr2 = degrade(hr, np.random.default_rng(5))
+    assert lr1.shape == (128, 128) and np.array_equal(lr1, lr2)
+    assert make_condition(lr1, 256).shape == (256, 256)
 
 
-def test_subject_id_rejects_path_without_subject():
-    with pytest.raises(ValueError):
-        subject_id_from_path(
-            Path("data/session-1_T1w.nii")
-        )
-
-
-def test_load_canonical_volume_returns_float32(tmp_path):
-    path = tmp_path / "sub-0_T1w.nii"
-    write_nifti(path, (4, 5, 6))
-
-    volume = load_canonical_volume(path)
-
-    assert volume.shape == (4, 5, 6)
-    assert volume.dtype == np.float32
-
-
-def test_load_canonical_volume_rejects_4d(tmp_path):
-    path = tmp_path / "sub-0_T1w.nii"
-    write_nifti(path, (4, 5, 6, 2))
-
-    with pytest.raises(
-        ValueError,
-        match="three-dimensional",
-    ):
-        load_canonical_volume(path)
-
-
-def test_load_canonical_volume_rejects_invalid_values(tmp_path):
-    path = tmp_path / "sub-0_T1w.nii"
-    write_nifti(
-        path,
-        (4, 5, 6),
-        fill_value=np.nan,
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="no finite intensity",
-    ):
-        load_canonical_volume(path)
-
-
-def test_select_centered_indices_has_exact_count():
-    indices = select_centered_indices(
-        axis_length=236,
-        count=30,
-    )
-
-    assert len(indices) == 30
-    assert indices[0] == 103
-    assert indices[-1] == 132
-
-
-def test_select_centered_indices_rejects_zero():
-    with pytest.raises(ValueError):
-        select_centered_indices(
-            axis_length=236,
-            count=0,
-        )
-
-
-def test_select_centered_indices_rejects_too_many_slices():
-    with pytest.raises(ValueError):
-        select_centered_indices(
-            axis_length=10,
-            count=11,
-        )
-
-
-@pytest.mark.parametrize(
-    ("orientation", "expected_shape"),
-    [
-        ("sagittal", (4, 3)),
-        ("coronal", (4, 2)),
-        ("axial", (3, 2)),
-    ],
-)
-def test_extract_slice_shapes(orientation, expected_shape):
-    volume = np.zeros(
-        (2, 3, 4),
-        dtype=np.float64,
-    )
-
-    extracted = extract_slice(
-        volume,
-        orientation,
-        0,
-    )
-
-    assert extracted.shape == expected_shape
-    assert extracted.dtype == np.float32
-    assert extracted.flags["C_CONTIGUOUS"]
-
-
-def test_extract_slice_rejects_unknown_orientation():
-    volume = np.zeros((2, 3, 4))
-
-    with pytest.raises(
-        ValueError,
-        match="Unknown orientation",
-    ):
-        extract_slice(
-            volume,
-            "diagonal",
-            0,
-        )
-
-
-def test_extract_slice_rejects_out_of_range_index():
-    volume = np.zeros((2, 3, 4))
-
-    with pytest.raises(IndexError):
-        extract_slice(
-            volume,
-            "axial",
-            4,
-        )
-
-def test_extract_slice_uses_expected_display_orientation():
-    volume = np.arange(
-        2 * 3 * 4,
-        dtype=np.float32,
-    ).reshape(2, 3, 4)
-
-    extracted = extract_slice(
-        volume=volume,
-        orientation="axial",
-        index=0,
-    )
-
-    expected = np.array(
-        [
-            [8, 20],
-            [4, 16],
-            [0, 12],
-        ],
-        dtype=np.float32,
-    )
-
-    np.testing.assert_array_equal(extracted, expected)
+def test_fixed_noise_dataset_gives_the_same_pair_twice(tmp_path):
+    images = np.random.default_rng(0).random((4, 64, 64)).astype(np.float16)
+    np.savez(tmp_path / "val.npz", images=images, subjects=np.array(["sub-1"] * 4),
+             files=np.array(["a.nii.gz"] * 4), orientations=np.array(["axial"] * 4),
+             indices=np.arange(4))
+    dataset = SliceDataset(tmp_path / "val.npz", fixed_noise=True)
+    hr, cond = dataset[2]
+    assert hr.shape == (1, 64, 64) and torch.equal(cond, dataset[2][1])
+    assert hr.min() >= -1 and hr.max() <= 1

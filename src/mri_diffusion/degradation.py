@@ -1,137 +1,36 @@
-"""Synthetic LR degradation and condition preparation."""
+"""Synthetic low-resolution images.
+
+The steps and values match brain-mri-sr-baselines, so the diffusion model and
+the interpolation methods are judged on the same kind of input.
+"""
 
 import cv2
 import numpy as np
 
+from mri_diffusion import config
 
-def degrade_image(
-    hr_image,
-    scale,
-    blur_sigma,
-    noise_sigma,
-    random_generator,
-):
-    """Create a synthetic LR image from one HR image."""
 
-    hr_image = np.asarray(
-        hr_image,
-        dtype=np.float32,
-    )
-
-    if hr_image.ndim != 2:
-        raise ValueError(
-            "The HR image must be two-dimensional"
-        )
-
-    if not np.isfinite(hr_image).all():
-        raise ValueError(
-            "The HR image contains non-finite values"
-        )
-
-    if scale < 2:
-        raise ValueError(
-            "Scale must be greater than or equal to 2"
-        )
-
-    if blur_sigma < 0:
-        raise ValueError(
-            "Blur sigma cannot be negative"
-        )
-
-    if noise_sigma < 0:
-        raise ValueError(
-            "Noise sigma cannot be negative"
-        )
-
-    if noise_sigma > 0 and random_generator is None:
-        raise ValueError(
-            "A random generator is required when adding noise"
-        )
-
-    degraded = hr_image.copy()
-
-    if blur_sigma > 0:
-        degraded = cv2.GaussianBlur(
-            degraded,
-            (0, 0),
-            blur_sigma,
-        )
-
-    height, width = degraded.shape
-
-    lr_height = max(
-        1,
-        round(height / scale),
-    )
-    lr_width = max(
-        1,
-        round(width / scale),
-    )
-
-    lr_image = cv2.resize(
-        degraded,
-        (lr_width, lr_height),
-        interpolation=cv2.INTER_AREA,
-    )
-
+def degrade(hr, rng, scale=config.SCALE, blur_sigma=config.BLUR_SIGMA,
+            noise_sigma=config.NOISE_SIGMA):
+    """Blur an HR slice in [0, 1], shrink it by `scale` and add Gaussian noise."""
+    image = cv2.GaussianBlur(hr, (0, 0), blur_sigma) if blur_sigma > 0 else hr
+    height, width = image.shape
+    lr_size = (max(1, round(width / scale)), max(1, round(height / scale)))
+    # INTER_AREA averages the pixels that are merged, which is what a
+    # coarser acquisition grid does
+    lr = cv2.resize(image, lr_size, interpolation=cv2.INTER_AREA)
     if noise_sigma > 0:
-        noise = random_generator.normal(
-            loc=0.0,
-            scale=noise_sigma,
-            size=lr_image.shape,
-        ).astype(
-            np.float32
-        )
-
-        lr_image = lr_image + noise
-
-    return np.clip(
-        lr_image,
-        0.0,
-        1.0,
-    ).astype(
-        np.float32,
-        copy=False,
-    )
+        lr = lr + rng.normal(0.0, noise_sigma, size=lr.shape).astype(np.float32)
+    return np.clip(lr, 0.0, 1.0).astype(np.float32)
 
 
-def create_condition(
-    lr_image,
-    target_size,
-):
-    """Upscale an LR image with Bicubic interpolation."""
+def upscale(lr, size, method=cv2.INTER_CUBIC):
+    """Interpolate an LR image back to size x size."""
+    resized = cv2.resize(lr, (size, size), interpolation=method)
+    return np.clip(resized, 0.0, 1.0).astype(np.float32)
 
-    lr_image = np.asarray(
-        lr_image,
-        dtype=np.float32,
-    )
 
-    if lr_image.ndim != 2:
-        raise ValueError(
-            "The LR image must be two-dimensional"
-        )
-
-    if not np.isfinite(lr_image).all():
-        raise ValueError(
-            "The LR image contains non-finite values"
-        )
-
-    if target_size <= 0:
-        raise ValueError(
-            "Target size must be positive"
-        )
-
-    condition = cv2.resize(
-        lr_image,
-        (target_size, target_size),
-        interpolation=cv2.INTER_CUBIC,
-    )
-
-    return np.clip(
-        condition,
-        0.0,
-        1.0,
-    ).astype(
-        np.float32,
-        copy=False,
-    )
+def make_condition(lr, size):
+    # SR3 (Saharia et al. 2023) feeds the network the LR image after bicubic
+    # upsampling, so it has the same size as the image being generated
+    return upscale(lr, size, cv2.INTER_CUBIC)
